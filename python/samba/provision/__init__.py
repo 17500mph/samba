@@ -428,7 +428,8 @@ def get_last_provision_usn(sam):
         entry = sam.search(expression="%s=*" % LAST_PROVISION_USN_ATTRIBUTE,
                        base="@PROVISION", scope=ldb.SCOPE_BASE,
                        attrs=[LAST_PROVISION_USN_ATTRIBUTE, "provisionnerID"])
-    except ldb.LdbError, (ecode, emsg):
+    except ldb.LdbError as e1:
+        (ecode, emsg) = e1.args
         if ecode == ldb.ERR_NO_SUCH_OBJECT:
             return None
         raise
@@ -653,6 +654,22 @@ def guess_names(lp=None, hostname=None, domain=None, dnsdomain=None,
         raise ProvisioningError("guess_names: Realm '%s' must not be equal to NetBIOS hostname '%s'!" % (realm, netbiosname))
     if domain == realm and not domain_names_forced:
         raise ProvisioningError("guess_names: Realm '%s' must not be equal to short domain name '%s'!" % (realm, domain))
+
+    if serverrole != "active directory domain controller":
+        #
+        # This is the code path for a domain member
+        # where we provision the database as if we where
+        # on a domain controller, so we should not use
+        # the same dnsdomain as the domain controllers
+        # of our primary domain.
+        #
+        # This will be important if we start doing
+        # SID/name filtering and reject the local
+        # sid and names if they come from a domain
+        # controller.
+        #
+        realm = netbiosname
+        dnsdomain = netbiosname.lower()
 
     if rootdn is None:
        rootdn = domaindn
@@ -1197,7 +1214,7 @@ def getpolicypath(sysvolpath, dnsdomain, guid):
 
 def create_gpo_struct(policy_path):
     if not os.path.exists(policy_path):
-        os.makedirs(policy_path, 0775)
+        os.makedirs(policy_path, 0o775)
     f = open(os.path.join(policy_path, "GPT.INI"), 'w')
     try:
         f.write("[General]\r\nVersion=0")
@@ -1205,10 +1222,10 @@ def create_gpo_struct(policy_path):
         f.close()
     p = os.path.join(policy_path, "MACHINE")
     if not os.path.exists(p):
-        os.makedirs(p, 0775)
+        os.makedirs(p, 0o775)
     p = os.path.join(policy_path, "USER")
     if not os.path.exists(p):
-        os.makedirs(p, 0775)
+        os.makedirs(p, 0o775)
 
 
 def create_default_gpo(sysvolpath, dnsdomain, policyguid, policyguid_dc):
@@ -1258,7 +1275,8 @@ def setup_samdb(path, session_info, provision_backend, lp, names,
     # DB
     try:
         samdb.connect(path)
-    except ldb.LdbError, (num, string_error):
+    except ldb.LdbError as e2:
+        (num, string_error) = e2.args
         if (num == ldb.ERR_INSUFFICIENT_ACCESS_RIGHTS):
             raise ProvisioningError("Permission denied connecting to %s, are you running as root?" % path)
         else:
@@ -1597,7 +1615,7 @@ def setsysvolacl(samdb, netlogon, sysvol, uid, gid, domainsid, dnsdomain,
         file = tempfile.NamedTemporaryFile(dir=os.path.abspath(sysvol))
         try:
             try:
-                smbd.set_simple_acl(file.name, 0755, gid)
+                smbd.set_simple_acl(file.name, 0o755, gid)
             except OSError:
                 if not smbd.have_posix_acls():
                     # This clue is only strictly correct for RPM and
@@ -1886,7 +1904,8 @@ def provision_fill(samdb, secrets_ldb, logger, names, paths,
                 elements=kerberos_enctypes, flags=ldb.FLAG_MOD_REPLACE,
                 name="msDS-SupportedEncryptionTypes")
             samdb.modify(msg)
-        except ldb.LdbError, (enum, estr):
+        except ldb.LdbError as e:
+            (enum, estr) = e.args
             if enum != ldb.ERR_NO_SUCH_ATTRIBUTE:
                 # It might be that this attribute does not exist in this schema
                 raise
@@ -2144,7 +2163,7 @@ def provision(logger, session_info, smbconf=None,
         setup_encrypted_secrets_key(paths.encrypted_secrets_key_path)
 
     if paths.sysvol and not os.path.exists(paths.sysvol):
-        os.makedirs(paths.sysvol, 0775)
+        os.makedirs(paths.sysvol, 0o775)
 
     ldapi_url = "ldapi://%s" % urllib.quote(paths.s4_ldapi_path, safe="")
 
@@ -2224,7 +2243,7 @@ def provision(logger, session_info, smbconf=None,
                 raise MissingShareError("sysvol", paths.smbconf)
 
             if not os.path.isdir(paths.netlogon):
-                os.makedirs(paths.netlogon, 0755)
+                os.makedirs(paths.netlogon, 0o755)
 
         if adminpass is None:
             adminpass = samba.generate_random_password(12, 32)
@@ -2296,7 +2315,7 @@ def provision(logger, session_info, smbconf=None,
         # chown the dns.keytab in the bind-dns directory
         if paths.bind_gid is not None:
             try:
-                os.chmod(paths.binddns_dir, 0770)
+                os.chmod(paths.binddns_dir, 0o770)
                 os.chown(paths.binddns_dir, -1, paths.bind_gid)
             except OSError:
                 if not os.environ.has_key('SAMBA_SELFTEST'):
@@ -2304,7 +2323,7 @@ def provision(logger, session_info, smbconf=None,
                                 paths.binddns_dir, paths.bind_gid)
 
             try:
-                os.chmod(bind_dns_keytab_path, 0640)
+                os.chmod(bind_dns_keytab_path, 0o640)
                 os.chown(bind_dns_keytab_path, -1, paths.bind_gid)
             except OSError:
                 if not os.environ.has_key('SAMBA_SELFTEST'):

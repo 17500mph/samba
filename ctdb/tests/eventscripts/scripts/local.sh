@@ -1,24 +1,23 @@
 # Hey Emacs, this is a -*- shell-script -*- !!!  :-)
 
-# Augment PATH with relevant stubs/ directories.  We do this by actually
-# setting PATH, and also by setting $EVENTSCRIPTS_PATH and then
-# prepending that to $PATH in rc.local to avoid the PATH reset in
-# functions.
+#
+# Augment PATH with relevant stubs/ directories.
+#
 
-EVENTSCRIPTS_PATH=""
+stubs_dir="${TEST_SUBDIR}/stubs"
+[ -d "${stubs_dir}" ] || die "Failed to locate stubs/ subdirectory"
 
-if [ -d "${TEST_SUBDIR}/stubs" ] ; then
-    EVENTSCRIPTS_PATH="${TEST_SUBDIR}/stubs"
-    case "$EVENTSCRIPTS_PATH" in
-	/*) : ;;
-	*) EVENTSCRIPTS_PATH="${PWD}/${EVENTSCRIPTS_PATH}" ;;
-    esac
-    export CTDB_HELPER_BINDIR="$EVENTSCRIPTS_PATH"
-fi
+# Make the path absolute for tests that change directory
+case "$stubs_dir" in
+/*) : ;;
+*) stubs_dir="${PWD}/${stubs_dir}" ;;
+esac
 
-export EVENTSCRIPTS_PATH
+# Use stubs as helpers
+export CTDB_HELPER_BINDIR="$stubs_dir"
 
-PATH="${EVENTSCRIPTS_PATH}:${PATH}"
+PATH="${stubs_dir}:${PATH}"
+
 
 export CTDB="ctdb"
 
@@ -163,8 +162,8 @@ _tcp_connections ()
 
 setup_tcp_connections ()
 {
-	_t==$(mktemp --tmpdir="$EVENTSCRIPTS_TESTS_VAR_DIR")
-	export FAKE_NETSTAT_TCP_ESTABLISHED_FILE"$_t"
+	_t=$(mktemp --tmpdir="$EVENTSCRIPTS_TESTS_VAR_DIR")
+	export FAKE_NETSTAT_TCP_ESTABLISHED_FILE="$_t"
 	_tcp_connections "$@" >"$FAKE_NETSTAT_TCP_ESTABLISHED_FILE"
 }
 
@@ -693,7 +692,7 @@ check_ctdb_tdb_statd_state ()
     ctdb_catdb_format_pairs | {
 	ok
 	simple_test_command ctdb catdb ctdb.tdb
-    } || test_fail
+    } || exit $?
 }
 
 check_statd_callout_smnotify ()
@@ -707,16 +706,16 @@ check_statd_callout_smnotify ()
     while read _x _sip _x ; do
 	for _cip ; do
 	    cat <<EOF
---client=${_cip} --ip=${_sip} --server=${_sip} --stateval=${_state_even}
---client=${_cip} --ip=${_sip} --server=${NFS_HOSTNAME} --stateval=${_state_even}
---client=${_cip} --ip=${_sip} --server=${_sip} --stateval=${_state_odd}
---client=${_cip} --ip=${_sip} --server=${NFS_HOSTNAME} --stateval=${_state_odd}
+SM_NOTIFY: ${_sip} -> ${_cip}, MON_NAME=${_sip}, STATE=${_state_even}
+SM_NOTIFY: ${_sip} -> ${_cip}, MON_NAME=${NFS_HOSTNAME}, STATE=${_state_even}
+SM_NOTIFY: ${_sip} -> ${_cip}, MON_NAME=${_sip}, STATE=${_state_odd}
+SM_NOTIFY: ${_sip} -> ${_cip}, MON_NAME=${NFS_HOSTNAME}, STATE=${_state_odd}
 EOF
 	done
     done | {
 	ok
 	simple_test_event "notify"
-    } || test_fail
+    } || exit $?
 }
 
 ######################################################################
@@ -728,9 +727,7 @@ setup_ctdb_natgw ()
 	natgw_config_dir="${TEST_VAR_DIR}/natgw_config"
 	mkdir -p "$natgw_config_dir"
 
-	# These will accumulate, 1 per test... but will be cleaned up at
-	# the end.
-	export CTDB_NATGW_NODES=$(mktemp --tmpdir="$natgw_config_dir")
+	export CTDB_NATGW_NODES="${natgw_config_dir}/natgw_nodes"
 
 	# Read from stdin
 	while read _ip _opts ; do

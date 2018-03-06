@@ -228,6 +228,18 @@ static NTSTATUS add_trusted_domain(const char *domain_name,
 		return NT_STATUS_NO_MEMORY;
 	}
 
+	domain->queue = tevent_queue_create(domain, "winbind_domain");
+	if (domain->queue == NULL) {
+		TALLOC_FREE(domain);
+		return NT_STATUS_NO_MEMORY;
+	}
+
+	domain->binding_handle = wbint_binding_handle(domain, domain, NULL);
+	if (domain->binding_handle == NULL) {
+		TALLOC_FREE(domain);
+		return NT_STATUS_NO_MEMORY;
+	}
+
 	domain->name = talloc_strdup(domain, domain_name);
 	if (domain->name == NULL) {
 		TALLOC_FREE(domain);
@@ -781,7 +793,12 @@ enum winbindd_result winbindd_dual_init_connection(struct winbindd_domain *domai
 		[sizeof(state->request->data.init_conn.dcname)-1]='\0';
 
 	if (strlen(state->request->data.init_conn.dcname) > 0) {
-		fstrcpy(domain->dcname, state->request->data.init_conn.dcname);
+		TALLOC_FREE(domain->dcname);
+		domain->dcname = talloc_strdup(domain,
+				state->request->data.init_conn.dcname);
+		if (domain->dcname == NULL) {
+			return WINBINDD_ERROR;
+		}
 	}
 
 	init_dc_connection(domain, false);
@@ -942,6 +959,17 @@ static bool add_trusted_domains_dc(void)
 		}
 		if (domains[i]->trust_attributes & LSA_TRUST_ATTRIBUTE_WITHIN_FOREST) {
 			trust_flags |= NETR_TRUST_FLAG_IN_FOREST;
+		}
+
+		if (domains[i]->trust_attributes & LSA_TRUST_ATTRIBUTE_CROSS_ORGANIZATION) {
+			/*
+			 * We don't support selective authentication yet.
+			 */
+			DBG_WARNING("Ignoring CROSS_ORGANIZATION trust to "
+				    "domain[%s/%s]\n",
+				    domains[i]->netbios_name,
+				    domains[i]->domain_name);
+			continue;
 		}
 
 		status = add_trusted_domain(domains[i]->netbios_name,
@@ -1949,18 +1977,6 @@ done:
 	talloc_destroy(frame);
 
 	return ret;
-}
-
-/*********************************************************************
- ********************************************************************/
-
-bool winbindd_internal_child(struct winbindd_child *child)
-{
-	if ((child == idmap_child()) || (child == locator_child())) {
-		return True;
-	}
-
-	return False;
 }
 
 #ifdef HAVE_KRB5_LOCATE_PLUGIN_H

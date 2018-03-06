@@ -217,7 +217,8 @@ class DrsReplicaSyncTestCase(drs_base.DrsBaseTestCase):
         try:
             # ldb_dc1 is now RID MASTER (as VAMPIREDC)
             ldb_dc1.modify(m)
-        except ldb.LdbError, (num, msg):
+        except ldb.LdbError as e1:
+            (num, msg) = e1.args
             self.fail("Failed to reassign RID Master " +  msg)
 
         try:
@@ -231,7 +232,7 @@ class DrsReplicaSyncTestCase(drs_base.DrsBaseTestCase):
             # 3. Make sure the allocation succeeds
             try:
                 (level, ctr) = drs.DsGetNCChanges(drs_handle, 8, req8)
-            except RuntimeError, e:
+            except RuntimeError as e:
                 self.fail("RID allocation failed: " + str(e))
 
             fsmo_dn = ldb.Dn(self.ldb_dc1, "CN=RID Manager$,CN=System," + self.ldb_dc1.domain_dn())
@@ -257,7 +258,8 @@ class DrsReplicaSyncTestCase(drs_base.DrsBaseTestCase):
             m["becomeRidMaster"] = ldb.MessageElement("1", ldb.FLAG_MOD_REPLACE, "becomeRidMaster")
             try:
                 ldb_dc2.modify(m)
-            except ldb.LdbError, (num, msg):
+            except ldb.LdbError as e:
+                (num, msg) = e.args
                 self.fail("Failed to restore RID Master " +  msg)
 
     def test_offline_samba_tool_seized_ridalloc(self):

@@ -115,13 +115,12 @@ struct winbindd_child_dispatch_table {
 };
 
 struct winbindd_child {
-	struct winbindd_child *next, *prev;
-
 	pid_t pid;
 	struct winbindd_domain *domain;
 	char *logfilename;
 
 	int sock;
+	struct tevent_fd *monitor_fde; /* Watch for dead children/sockets */
 	struct tevent_queue *queue;
 	struct dcerpc_binding_handle *binding_handle;
 
@@ -183,6 +182,9 @@ struct winbindd_domain {
 	/* The child pid we're talking to */
 
 	struct winbindd_child *children;
+
+	struct tevent_queue *queue;
+	struct dcerpc_binding_handle *binding_handle;
 
 	/* Callback we use to try put us back online. */
 

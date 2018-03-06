@@ -1260,7 +1260,7 @@ static void manage_squid_basic_request(enum stdio_helper_mode stdio_helper_mode,
 				   struct ntlm_auth_state *state,
 					char *buf, int length, void **private2)
 {
-	char *user, *pass;	
+	char *user, *pass;
 	user=buf;
 
 	pass=(char *)memchr(buf,' ',length);
@@ -1273,8 +1273,20 @@ static void manage_squid_basic_request(enum stdio_helper_mode stdio_helper_mode,
 	pass++;
 
 	if (state->helper_mode == SQUID_2_5_BASIC) {
-		rfc1738_unescape(user);
-		rfc1738_unescape(pass);
+		char *end = rfc1738_unescape(user);
+		if (end == NULL || (end - user) != strlen(user)) {
+			DEBUG(2, ("Badly rfc1738 encoded username: %s; "
+				  "denying access\n", user));
+			printf("ERR\n");
+			return;
+		}
+		end = rfc1738_unescape(pass);
+		if (end == NULL || (end - pass) != strlen(pass)) {
+			DEBUG(2, ("Badly encoded password for %s; "
+				  "denying access\n", user));
+			printf("ERR\n");
+			return;
+		}
 	}
 
 	if (check_plaintext_auth(user, pass, False)) {
@@ -1378,7 +1390,7 @@ static void manage_gensec_request(enum stdio_helper_mode stdio_helper_mode,
 			 * NTLMSSP_CLIENT_1 for now.
 			 */
 			use_cached_creds = false;
-			/* fall through */
+			FALL_THROUGH;
 		case NTLMSSP_CLIENT_1:
 			/* setup the client side */
 
@@ -1474,7 +1486,7 @@ static void manage_gensec_request(enum stdio_helper_mode stdio_helper_mode,
 			if (!in.length) {
 				first = true;
 			}
-			/* fall through */
+			FALL_THROUGH;
 		case SQUID_2_5_NTLMSSP:
 			nt_status = gensec_start_mech_by_oid(state->gensec_state, GENSEC_OID_NTLMSSP);
 			break;

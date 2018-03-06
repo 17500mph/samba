@@ -4932,6 +4932,7 @@ static int replmd_op_possible_conflict_callback(struct ldb_request *req, struct 
 				       "Conflict adding object '%s' from incoming replication as we are read only for the partition.  \n"
 				       " - We must fail the operation until a master for this partition resolves the conflict",
 				       ldb_dn_get_linearized(conflict_dn));
+		ret = LDB_ERR_OPERATIONS_ERROR;
 		goto failed;
 	}
 
@@ -5108,6 +5109,9 @@ failed:
 	 * replication will stop with an error, but there is not much
 	 * else we can do.
 	 */
+	if (ret == LDB_SUCCESS) {
+		ret = LDB_ERR_OPERATIONS_ERROR;
+	}
 	return ldb_module_done(ar->req, NULL, NULL,
 			       ret);
 }
@@ -5570,6 +5574,7 @@ static int replmd_replicated_handle_rename(struct replmd_replicated_request *ar,
 				       "Conflict adding object '%s' from incoming replication but we are read only for the partition.  \n"
 				       " - We must fail the operation until a master for this partition resolves the conflict",
 				       ldb_dn_get_linearized(conflict_dn));
+		ret = LDB_ERR_OPERATIONS_ERROR;
 		goto failed;
 	}
 
@@ -5717,8 +5722,10 @@ static int replmd_replicated_handle_rename(struct replmd_replicated_request *ar,
 			 ldb_errstring(ldb_module_get_ctx(ar->module))));
 			goto failed;
 	}
-failed:
 
+	talloc_free(tmp_ctx);
+	return ret;
+failed:
 	/*
 	 * On failure make the caller get the error
 	 * This means replication will stop with an error,
@@ -5726,6 +5733,9 @@ failed:
 	 * LDB_ERR_ENTRY_ALREADY_EXISTS case this is exactly what is
 	 * needed.
 	 */
+	if (ret == LDB_SUCCESS) {
+		ret = LDB_ERR_OPERATIONS_ERROR;
+	}
 
 	talloc_free(tmp_ctx);
 	return ret;

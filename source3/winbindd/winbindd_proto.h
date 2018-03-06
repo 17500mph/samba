@@ -272,7 +272,6 @@ void setup_domain_child(struct winbindd_domain *domain);
 /* The following definitions come from winbindd/winbindd_dual.c  */
 
 struct dcerpc_binding_handle *dom_child_handle(struct winbindd_domain *domain);
-struct winbindd_child *choose_domain_child(struct winbindd_domain *domain);
 
 struct tevent_req *wb_child_request_send(TALLOC_CTX *mem_ctx,
 					 struct tevent_context *ev,
@@ -351,6 +350,7 @@ NTSTATUS winbindd_print_groupmembers(struct db_context *members,
 
 void init_idmap_child(void);
 struct winbindd_child *idmap_child(void);
+struct dcerpc_binding_handle *idmap_child_handle(void);
 struct idmap_domain *idmap_find_domain_with_sid(const char *domname,
 						const struct dom_sid *sid);
 const char *idmap_config_const_string(const char *domname, const char *option,
@@ -366,6 +366,7 @@ bool lp_scan_idmap_domains(bool (*fn)(const char *domname,
 
 void init_locator_child(void);
 struct winbindd_child *locator_child(void);
+struct dcerpc_binding_handle *locator_child_handle(void);
 
 /* The following definitions come from winbindd/winbindd_misc.c  */
 
@@ -502,7 +503,6 @@ NTSTATUS resolve_alias_to_username(TALLOC_CTX *mem_ctx,
 				   const char *alias, char **name);
 
 bool winbindd_can_contact_domain(struct winbindd_domain *domain);
-bool winbindd_internal_child(struct winbindd_child *child);
 void winbindd_set_locator_kdc_envs(const struct winbindd_domain *domain);
 void winbindd_unset_locator_kdc_env(const struct winbindd_domain *domain);
 void winbindd_set_locator_kdc_envs(const struct winbindd_domain *domain);

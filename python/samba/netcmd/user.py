@@ -378,7 +378,7 @@ Example5 shows how to create an RFC2307/NIS domain enabled user account. If
                           uidnumber=uid_number, gidnumber=gid_number,
                           gecos=gecos, loginshell=login_shell,
                           smartcard_required=smartcard_required)
-        except Exception, e:
+        except Exception as e:
             raise CommandError("Failed to add user '%s': " % username, e)
 
         self.outf.write("User '%s' created successfully\n" % username)
@@ -453,7 +453,7 @@ Example2 shows how to delete a user in the domain against the local server.   su
 
         try:
             samdb.delete(user_dn)
-        except Exception, e:
+        except Exception as e:
             raise CommandError('Failed to remove user "%s"' % username, e)
         self.outf.write("Deleted user %s\n" % username)
 
@@ -557,7 +557,7 @@ Example3 shows how to enable a user in the domain against a local LDAP server.  
             credentials=creds, lp=lp)
         try:
             samdb.enable_account(filter)
-        except Exception, msg:
+        except Exception as msg:
             raise CommandError("Failed to enable user '%s': %s" % (username or filter, msg))
         self.outf.write("Enabled user '%s'\n" % (username or filter))
 
@@ -596,7 +596,7 @@ class cmd_user_disable(Command):
             credentials=creds, lp=lp)
         try:
             samdb.disable_account(filter)
-        except Exception, msg:
+        except Exception as msg:
             raise CommandError("Failed to disable user '%s': %s" % (username or filter, msg))
 
 
@@ -615,7 +615,7 @@ samba-tool user setexpiry User1 --days=20 --URL=ldap://samba.samdom.example.com 
 Example1 shows how to set the expiration of an account in a remote LDAP server.  The --URL parameter is used to specify the remote target server.  The --username= and --password= options are used to pass the username and password of a user that exists on the remote server and is authorized to update that server.
 
 Example2:
-su samba-tool user setexpiry User2
+sudo samba-tool user setexpiry User2 --noexpiry
 
 Example2 shows how to set the account expiration of user User2 so it will never expire.  The user in this example resides on the  local server.   sudo is used so a user may run the command as root.
 
@@ -663,7 +663,7 @@ Example4 shows how to set the account expiration so that it will never expire.  
 
         try:
             samdb.setexpiry(filter, days*24*3600, no_expiry_req=noexpiry)
-        except Exception, msg:
+        except Exception as msg:
             # FIXME: Catch more specific exception
             raise CommandError("Failed to set expiry for user '%s': %s" % (
                 username or filter, msg))
@@ -714,7 +714,7 @@ class cmd_user_password(Command):
 
         try:
             net.change_password(password.encode('utf-8'))
-        except Exception, msg:
+        except Exception as msg:
             # FIXME: catch more specific exception
             raise CommandError("Failed to change password : %s" % msg)
         self.outf.write("Changed password OK\n")
@@ -832,7 +832,7 @@ Example3 shows how an administrator would reset TestUser3 user's password to pas
                 samdb.toggle_userAccountFlags(filter, flags, on=True)
                 command = "Failed to enable account for user '%s'" % (username or filter)
                 samdb.enable_account(filter)
-            except Exception, msg:
+            except Exception as msg:
                 # FIXME: catch more specific exception
                 raise CommandError("%s: %s" % (command, msg))
             self.outf.write("Added UF_SMARTCARD_REQUIRED OK\n")
@@ -847,7 +847,7 @@ Example3 shows how an administrator would reset TestUser3 user's password to pas
                 samdb.setpassword(filter, password,
                                   force_change_at_next_login=must_change_at_next_login,
                                   username=username)
-            except Exception, msg:
+            except Exception as msg:
                 # FIXME: catch more specific exception
                 raise CommandError("%s: %s" % (command, msg))
             self.outf.write("Changed password OK\n")
@@ -1037,7 +1037,8 @@ class GetPasswordCommand(Command):
                     nthash = tmp.get_nt_hash()
                     if nthash == unicodePwd:
                         calculated["Primary:CLEARTEXT"] = cv
-                except gpgme.GpgmeError as (major, minor, msg):
+                except gpgme.GpgmeError as e1:
+                    (major, minor, msg) = e1.args
                     if major == gpgme.ERR_BAD_SECKEY:
                         msg = "ERR_BAD_SECKEY: " + msg
                     else:
@@ -1807,7 +1808,7 @@ samba-tool user syncpasswords --terminate \\
                     logfile = self.logfile
                     self.logfile = None
                     log_msg("Closing logfile[%s] (st_nlink == 0)\n" % (logfile))
-                    logfd = os.open(logfile, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0600)
+                    logfd = os.open(logfile, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
                     os.dup2(logfd, 0)
                     os.dup2(logfd, 1)
                     os.dup2(logfd, 2)
@@ -1969,8 +1970,9 @@ samba-tool user syncpasswords --terminate \\
                 flags |= os.O_CREAT
 
             try:
-                self.lockfd = os.open(self.lockfile, flags, 0600)
-            except IOError as (err, msg):
+                self.lockfd = os.open(self.lockfile, flags, 0o600)
+            except IOError as e4:
+                (err, msg) = e4.args
                 if err == errno.ENOENT:
                     if terminate:
                         return False
@@ -1982,7 +1984,8 @@ samba-tool user syncpasswords --terminate \\
             try:
                 fcntl.lockf(self.lockfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 got_exclusive = True
-            except IOError as (err, msg):
+            except IOError as e5:
+                (err, msg) = e5.args
                 if err != errno.EACCES and err != errno.EAGAIN:
                     log_msg("check_current_pid_conflict: failed to get exclusive lock[%s] - %s (%d)" %
                             (self.lockfile, msg, err))
@@ -2001,7 +2004,8 @@ samba-tool user syncpasswords --terminate \\
             if got_exclusive and terminate:
                 try:
                     os.ftruncate(self.lockfd, 0)
-                except IOError as (err, msg):
+                except IOError as e2:
+                    (err, msg) = e2.args
                     log_msg("check_current_pid_conflict: failed to truncate [%s] - %s (%d)" %
                             (self.lockfile, msg, err))
                     raise
@@ -2011,7 +2015,8 @@ samba-tool user syncpasswords --terminate \\
 
             try:
                 fcntl.lockf(self.lockfd, fcntl.LOCK_SH)
-            except IOError as (err, msg):
+            except IOError as e6:
+                (err, msg) = e6.args
                 log_msg("check_current_pid_conflict: failed to get shared lock[%s] - %s (%d)" %
                         (self.lockfile, msg, err))
 
@@ -2026,7 +2031,8 @@ samba-tool user syncpasswords --terminate \\
                     try:
                         fcntl.lockf(self.lockfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                         got_exclusive = True
-                    except IOError as (err, msg):
+                    except IOError as e:
+                        (err, msg) = e.args
                         if err != errno.EACCES and err != errno.EAGAIN:
                             log_msg("update_pid(%r): failed to get exclusive lock[%s] - %s (%d)" %
                                     (pid, self.lockfile, msg, err))
@@ -2048,7 +2054,8 @@ samba-tool user syncpasswords --terminate \\
                     os.ftruncate(self.lockfd, 0)
                     if buf is not None:
                         os.write(self.lockfd, buf)
-                except IOError as (err, msg):
+                except IOError as e3:
+                    (err, msg) = e3.args
                     log_msg("check_current_pid_conflict: failed to write pid to [%s] - %s (%d)" %
                             (self.lockfile, msg, err))
                     raise
@@ -2212,7 +2219,7 @@ samba-tool user syncpasswords --terminate \\
             maxfd = resource.getrlimit(resource.RLIMIT_NOFILE)[1]
             if maxfd == resource.RLIM_INFINITY:
                 maxfd = 1024 # Rough guess at maximum number of open file descriptors.
-            logfd = os.open(logfile, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0600)
+            logfd = os.open(logfile, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
             self.outf.write("Using logfile[%s]\n" % logfile)
             for fd in range(0, maxfd):
                 if fd == logfd:
@@ -2279,7 +2286,8 @@ samba-tool user syncpasswords --terminate \\
 
             try:
                 sync_loop(wait)
-            except ldb.LdbError as (enum, estr):
+            except ldb.LdbError as e7:
+                (enum, estr) = e7.args
                 self.samdb = None
                 log_msg("ldb.LdbError(%d) => (%s)\n" % (enum, estr))
 
@@ -2561,7 +2569,7 @@ class cmd_user_move(Command):
 
         try:
             full_new_parent_dn = samdb.normalize_dn_in_domain(new_parent_dn)
-        except Exception, e:
+        except Exception as e:
             raise CommandError('Invalid new_parent_dn "%s": %s' %
                                (new_parent_dn, e.message))
 
@@ -2571,7 +2579,7 @@ class cmd_user_move(Command):
 
         try:
             samdb.rename(user_dn, full_new_user_dn)
-        except Exception, e:
+        except Exception as e:
             raise CommandError('Failed to move user "%s"' % username, e)
         self.outf.write('Moved user "%s" into "%s"\n' %
                         (username, full_new_parent_dn))

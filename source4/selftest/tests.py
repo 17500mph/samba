@@ -66,51 +66,47 @@ try:
 finally:
     f.close()
 
-have_tls_support = ("ENABLE_GNUTLS" in config_hash)
 have_heimdal_support = ("SAMBA4_USES_HEIMDAL" in config_hash)
-have_jansson_support = ("HAVE_JANSSON" in config_hash)
 
-if have_tls_support:
-    for options in ['-U"$USERNAME%$PASSWORD"']:
-        plantestsuite("samba4.ldb.ldaps with options %s(ad_dc_ntvfs)" % options, "ad_dc_ntvfs",
-                "%s/test_ldb.sh ldaps $SERVER_IP %s" % (bbdir, options))
+for options in ['-U"$USERNAME%$PASSWORD"']:
+    plantestsuite("samba4.ldb.ldaps with options %s(ad_dc_ntvfs)" % options, "ad_dc_ntvfs",
+            "%s/test_ldb.sh ldaps $SERVER_IP %s" % (bbdir, options))
 
-    creds_options = [
-        '--simple-bind-dn=$USERNAME@$REALM --password=$PASSWORD',
-    ]
-    peer_options = {
-        'SERVER_IP': '$SERVER_IP',
-        'SERVER_NAME': '$SERVER',
-        'SERVER.REALM': '$SERVER.$REALM',
-    }
-    tls_verify_options = [
-        '--option="tlsverifypeer=no_check"',
-        '--option="tlsverifypeer=ca_only"',
-        '--option="tlsverifypeer=ca_and_name_if_available"',
-        '--option="tlsverifypeer=ca_and_name"',
-        '--option="tlsverifypeer=as_strict_as_possible"',
-    ]
+creds_options = [
+    '--simple-bind-dn=$USERNAME@$REALM --password=$PASSWORD',
+]
+peer_options = {
+    'SERVER_IP': '$SERVER_IP',
+    'SERVER_NAME': '$SERVER',
+    'SERVER.REALM': '$SERVER.$REALM',
+}
+tls_verify_options = [
+    '--option="tlsverifypeer=no_check"',
+    '--option="tlsverifypeer=ca_only"',
+    '--option="tlsverifypeer=ca_and_name_if_available"',
+    '--option="tlsverifypeer=ca_and_name"',
+    '--option="tlsverifypeer=as_strict_as_possible"',
+]
 
-    # we use :local for fl2008r2dc because of the self-signed certificate
-    for env in ["ad_dc_ntvfs", "fl2008r2dc:local"]:
-        for peer_key in peer_options.keys():
-            peer_val = peer_options[peer_key]
-            for creds in creds_options:
-                for tls_verify in tls_verify_options:
-                    options = creds + ' ' + tls_verify
-                    plantestsuite("samba4.ldb.simple.ldaps with options %s %s(%s)" % (
-                                  peer_key, options, env), env,
-                                  "%s/test_ldb_simple.sh ldaps %s %s" % (bbdir, peer_val, options))
+# we use :local for fl2008r2dc because of the self-signed certificate
+for env in ["ad_dc_ntvfs", "fl2008r2dc:local"]:
+    for peer_key in peer_options.keys():
+        peer_val = peer_options[peer_key]
+        for creds in creds_options:
+            for tls_verify in tls_verify_options:
+                options = creds + ' ' + tls_verify
+                plantestsuite("samba4.ldb.simple.ldaps with options %s %s(%s)" % (
+                              peer_key, options, env), env,
+                              "%s/test_ldb_simple.sh ldaps %s %s" % (bbdir, peer_val, options))
 
 # test all "ldap server require strong auth" combinations
 for env in ["ad_dc_ntvfs", "fl2008r2dc", "fl2003dc"]:
     options = '--simple-bind-dn="$USERNAME@$REALM" --password="$PASSWORD"'
     plantestsuite("samba4.ldb.simple.ldap with SIMPLE-BIND %s(%s)" % (options, env),
                   env, "%s/test_ldb_simple.sh ldap $SERVER %s" % (bbdir, options))
-    if have_tls_support:
-        options += ' --option="tlsverifypeer=no_check"'
-        plantestsuite("samba4.ldb.simple.ldaps with SIMPLE-BIND %s(%s)" % (options, env),
-                      env, "%s/test_ldb_simple.sh ldaps $SERVER %s" % (bbdir, options))
+    options += ' --option="tlsverifypeer=no_check"'
+    plantestsuite("samba4.ldb.simple.ldaps with SIMPLE-BIND %s(%s)" % (options, env),
+                  env, "%s/test_ldb_simple.sh ldaps $SERVER %s" % (bbdir, options))
 
     auth_options = [
         '--option=clientldapsaslwrapping=plain',
@@ -122,10 +118,9 @@ for env in ["ad_dc_ntvfs", "fl2008r2dc", "fl2003dc"]:
         options = '-U"$USERNAME%$PASSWORD"' + ' ' + auth_option
         plantestsuite("samba4.ldb.simple.ldap with SASL-BIND %s(%s)" % (options, env),
                       env, "%s/test_ldb_simple.sh ldap $SERVER %s" % (bbdir, options))
-    if have_tls_support:
-        options = '-U"$USERNAME%$PASSWORD" --option="tlsverifypeer=no_check"'
-        plantestsuite("samba4.ldb.simple.ldaps with SASL-BIND %s(%s)" % (options, env),
-                      env, "%s/test_ldb_simple.sh ldaps $SERVER %s" % (bbdir, options))
+    options = '-U"$USERNAME%$PASSWORD" --option="tlsverifypeer=no_check"'
+    plantestsuite("samba4.ldb.simple.ldaps with SASL-BIND %s(%s)" % (options, env),
+                  env, "%s/test_ldb_simple.sh ldaps $SERVER %s" % (bbdir, options))
 
 for options in ['-U"$USERNAME%$PASSWORD"']:
     plantestsuite("samba4.ldb.ldapi with options %s(ad_dc_ntvfs:local)" % options, "ad_dc_ntvfs:local",
@@ -528,7 +523,7 @@ for env in ["nt4_dc", "nt4_member", "ad_dc", "ad_member", "s4member", "chgdcpass
              "--allocate-gid"]
 
     for t in tests:
-        plantestsuite("samba.wbinfo_simple.(%s:local).%s" % (env, t), "%s:local" % env, [os.path.join(srcdir(), "nsswitch/tests/test_wbinfo_simple.sh"), t])
+        plantestsuite("samba.wbinfo_simple.%s" % (t.replace(" --", ".").replace("--", "")), "%s:local" % env, [os.path.join(srcdir(), "nsswitch/tests/test_wbinfo_simple.sh"), t])
 
     plantestsuite(
         "samba.wbinfo_sids2xids.(%s:local)" % env, "%s:local" % env,
@@ -577,7 +572,7 @@ def planoldpythontestsuite(env, module, name=None, extra_path=[], environ={}, ex
 planoldpythontestsuite("ad_dc_ntvfs:local", "samba.tests.gensec", extra_args=['-U"$USERNAME%$PASSWORD"'], py3_compatible=True)
 planoldpythontestsuite("none", "simple", extra_path=["%s/lib/tdb/python/tests" % srcdir()], name="tdb.python")
 planpythontestsuite("ad_dc_ntvfs:local", "samba.tests.dcerpc.sam")
-planpythontestsuite("ad_dc_ntvfs:local", "samba.tests.dsdb")
+planpythontestsuite("ad_dc_ntvfs:local", "samba.tests.dsdb", py3_compatible=True)
 planpythontestsuite("none", "samba.tests.dsdb_lock")
 planpythontestsuite("ad_dc_ntvfs:local", "samba.tests.dcerpc.bare")
 planpythontestsuite("ad_dc_ntvfs:local", "samba.tests.dcerpc.unix")
@@ -622,7 +617,7 @@ planoldpythontestsuite("ad_dc_ntvfs:local", "samba.tests.dcerpc.registry", extra
 planoldpythontestsuite("ad_dc_ntvfs", "samba.tests.dcerpc.dnsserver", extra_args=['-U"$USERNAME%$PASSWORD"'])
 planoldpythontestsuite("ad_dc", "samba.tests.dcerpc.dnsserver", extra_args=['-U"$USERNAME%$PASSWORD"'])
 planoldpythontestsuite("ad_dc", "samba.tests.dcerpc.raw_protocol", extra_args=['-U"$USERNAME%$PASSWORD"'])
-if have_jansson_support and have_heimdal_support:
+if have_heimdal_support:
     planoldpythontestsuite("ad_dc:local", "samba.tests.auth_log", extra_args=['-U"$USERNAME%$PASSWORD"'],
                            environ={'CLIENT_IP': '127.0.0.11',
                                     'SOCKET_WRAPPER_DEFAULT_IFACE': 11})
@@ -771,6 +766,12 @@ plantestsuite_loadlist("samba4.ldap.rodc_rwdc.python(rodc)", "rodc:local",
                         '$SERVER', '$DC_SERVER', '-U"$USERNAME%$PASSWORD"',
                         '--workgroup=$DOMAIN', '$LOADLIST', '$LISTOPT'])
 
+planoldpythontestsuite("rodc:local", "replica_sync_rodc",
+                       extra_path=[os.path.join(samba4srcdir, 'torture/drs/python')],
+		       name="samba4.drs.replica_sync_rodc.python(rodc)",
+		       environ={'DC1': '$DC_SERVER', 'DC2': '$RODC_DC_SERVER'},
+		       extra_args=['-U$DOMAIN/$DC_USERNAME%$DC_PASSWORD'])
+
 for env in ["ad_dc_ntvfs", "fl2000dc", "fl2003dc", "fl2008r2dc"]:
     plantestsuite_loadlist("samba4.ldap_schema.python(%s)" % env, env, [python, os.path.join(samba4srcdir, "dsdb/tests/python/ldap_schema.py"), '$SERVER', '-U"$USERNAME%$PASSWORD"', '--workgroup=$DOMAIN', '$LOADLIST', '$LISTOPT'])
     plantestsuite("samba4.ldap.possibleInferiors.python(%s)" % env, env, [python, os.path.join(samba4srcdir, "dsdb/samdb/ldb_modules/tests/possibleinferiors.py"), "ldap://$SERVER", '-U"$USERNAME%$PASSWORD"', "-W$DOMAIN"])
@@ -857,6 +858,11 @@ for env in ['vampire_dc', 'promoted_dc']:
     planoldpythontestsuite("%s:local" % env, "samba_tool_drs",
                            extra_path=[os.path.join(samba4srcdir, 'torture/drs/python')],
                            name="samba4.drs.samba_tool_drs.python(%s)" % env,
+                           environ={'DC1': '$DC_SERVER', 'DC2': '$%s_SERVER' % env.upper()},
+                           extra_args=['-U$DOMAIN/$DC_USERNAME%$DC_PASSWORD'])
+    planoldpythontestsuite("%s:local" % env, "samba_tool_drs_showrepl",
+                           extra_path=[os.path.join(samba4srcdir, 'torture/drs/python')],
+                           name="samba4.drs.samba_tool_drs_showrepl.python(%s)" % env,
                            environ={'DC1': '$DC_SERVER', 'DC2': '$%s_SERVER' % env.upper()},
                            extra_args=['-U$DOMAIN/$DC_USERNAME%$DC_PASSWORD'])
     planoldpythontestsuite("%s:local" % env, "replica_sync",

@@ -27,6 +27,7 @@ from samba.dcerpc import drsblobs, security
 from samba import dsdb
 import ldb
 import samba
+import uuid
 
 class DsdbTests(TestCase):
 
@@ -41,17 +42,18 @@ class DsdbTests(TestCase):
                            lp=self.lp)
 
         # Create a test user
-        user_name = "samdb-testuser"
+        user_name = "dsdb-user-" + str(uuid.uuid4().hex[0:6])
         user_pass = samba.generate_random_password(32, 32)
         user_description = "Test user for dsdb test"
 
         base_dn = self.samdb.domain_dn()
 
         self.account_dn = "cn=" + user_name + ",cn=Users," + base_dn
-        delete_force(self.samdb, self.account_dn)
         self.samdb.newuser(username=user_name,
                            password=user_pass,
                            description=user_description)
+        # Cleanup (teardown)
+        self.addCleanup(delete_force, self.samdb, self.account_dn)
 
     def test_get_oid_from_attrid(self):
         oid = self.samdb.get_oid_from_attid(591614)
@@ -62,7 +64,7 @@ class DsdbTests(TestCase):
                                 base=self.account_dn,
                                 attrs=["replPropertyMetaData"])
         repl = ndr_unpack(drsblobs.replPropertyMetaDataBlob,
-                            str(res[0]["replPropertyMetaData"]))
+                          res[0]["replPropertyMetaData"][0])
         ctr = repl.ctr
         for o in ctr.array:
             # Search for Description
@@ -80,7 +82,7 @@ class DsdbTests(TestCase):
                                 base=self.account_dn,
                                 attrs=["replPropertyMetaData"])
         repl = ndr_unpack(drsblobs.replPropertyMetaDataBlob,
-                            str(res[0]["replPropertyMetaData"]))
+                          res[0]["replPropertyMetaData"][0])
         replBlob = ndr_pack(repl)
         msg = ldb.Message()
         msg.dn = res[0].dn
@@ -92,7 +94,7 @@ class DsdbTests(TestCase):
                                 base=self.account_dn,
                                 attrs=["replPropertyMetaData"])
         repl = ndr_unpack(drsblobs.replPropertyMetaDataBlob,
-                            str(res[0]["replPropertyMetaData"]))
+                          res[0]["replPropertyMetaData"][0])
         replBlob = ndr_pack(repl)
         msg = ldb.Message()
         msg.dn = res[0].dn
@@ -104,14 +106,14 @@ class DsdbTests(TestCase):
                                 base=self.account_dn,
                                 attrs=["replPropertyMetaData", "uSNChanged"])
         repl = ndr_unpack(drsblobs.replPropertyMetaDataBlob,
-                            str(res[0]["replPropertyMetaData"]))
+                          res[0]["replPropertyMetaData"][0])
         ctr = repl.ctr
         for o in ctr.array:
             # Search for Description
             if o.attid == 13:
                 old_version = o.version
                 o.version = o.version + 1
-                o.local_usn = long(str(res[0]["uSNChanged"])) + 1
+                o.local_usn = int(str(res[0]["uSNChanged"])) + 1
         replBlob = ndr_pack(repl)
         msg = ldb.Message()
         msg.dn = res[0].dn
@@ -124,15 +126,15 @@ class DsdbTests(TestCase):
                                 base=self.account_dn,
                                 attrs=["replPropertyMetaData", "uSNChanged"])
         repl = ndr_unpack(drsblobs.replPropertyMetaDataBlob,
-                            str(res[0]["replPropertyMetaData"]))
+                          res[0]["replPropertyMetaData"][0])
         ctr = repl.ctr
         for o in ctr.array:
             # Search for Description
             if o.attid == 13:
                 old_version = o.version
                 o.version = o.version + 1
-                o.local_usn = long(str(res[0]["uSNChanged"])) + 1
-                o.originating_usn = long(str(res[0]["uSNChanged"])) + 1
+                o.local_usn = int(str(res[0]["uSNChanged"])) + 1
+                o.originating_usn = int(str(res[0]["uSNChanged"])) + 1
         replBlob = ndr_pack(repl)
         msg = ldb.Message()
         msg.dn = res[0].dn
@@ -181,7 +183,8 @@ class DsdbTests(TestCase):
                                     controls=["local_oid:%s:1"
                                               % dsdb.DSDB_CONTROL_INVALID_NOT_IMPLEMENTED])
         except ldb.LdbError as e:
-            if e[0] != ldb.ERR_UNSUPPORTED_CRITICAL_EXTENSION:
+            (errno, estr) = e.args
+            if errno != ldb.ERR_UNSUPPORTED_CRITICAL_EXTENSION:
                 self.fail("Got %s should have got ERR_UNSUPPORTED_CRITICAL_EXTENSION"
                           % e[1])
 
@@ -225,7 +228,7 @@ class DsdbTests(TestCase):
                 "dn": dn,
                 "objectClass": "foreignSecurityPrincipal"})
         except ldb.LdbError as e:
-            (code, msg) = e
+            (code, msg) = e.args
             self.fail("Got unexpected exception %d - %s "
                       % (code, msg))
 
@@ -260,7 +263,7 @@ class DsdbTests(TestCase):
                 "objectSID": sid})
             self.fail("No exception should get LDB_ERR_CONSTRAINT_VIOLATION")
         except ldb.LdbError as e:
-            (code, msg) = e
+            (code, msg) = e.args
             if code != ldb.ERR_CONSTRAINT_VIOLATION:
                 self.fail("Got %d - %s should have got "
                           "LDB_ERR_CONSTRAINT_VIOLATION"

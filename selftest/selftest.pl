@@ -83,9 +83,20 @@ sub find_in_list($$)
 	return undef;
 }
 
-sub skip($)
+sub skip
 {
-	my ($name) = @_;
+	my ($name, $envname) = @_;
+	my ($env_basename, $env_localpart) = split(/:/, $envname);
+
+	if ($opt_target eq "samba3" && $Samba::ENV_NEEDS_AD_DC{$env_basename}) {
+		return "environment $envname is disabled as this build does not include an AD DC";
+	}
+
+	if (@opt_include_env && !(grep {$_ eq $env_basename} @opt_include_env)) {
+		return "environment $envname is disabled (via --include-env command line option) in this test run - skipping";
+	} elsif (@opt_exclude_env && grep {$_ eq $env_basename} @opt_exclude_env) {
+		return "environment $envname is disabled (via --exclude-env command line option) in this test run - skipping";
+	}
 
 	return find_in_list(\@excludes, $name);
 }
@@ -449,15 +460,12 @@ if (defined($ENV{SMBD_MAXTIME}) and $ENV{SMBD_MAXTIME} ne "") {
     $server_maxtime = $ENV{SMBD_MAXTIME};
 }
 
+$target = new Samba($bindir, $ldap, $srcdir, $server_maxtime);
 unless ($opt_list) {
 	if ($opt_target eq "samba") {
 		$testenv_default = "ad_dc";
-		require target::Samba;
-		$target = new Samba($bindir, $ldap, $srcdir, $server_maxtime);
 	} elsif ($opt_target eq "samba3") {
 		$testenv_default = "nt4_member";
-		require target::Samba3;
-		$target = new Samba3($bindir, $srcdir_abs, $server_maxtime);
 	}
 }
 
@@ -725,7 +733,7 @@ $individual_tests = {};
 
 foreach my $testsuite (@available) {
 	my $name = $$testsuite[0];
-	my $skipreason = skip($name);
+	my $skipreason = skip(@$testsuite);
 	if (defined($restricted)) {
 		# Find the testsuite for this test
 		my $match = undef;
@@ -834,6 +842,12 @@ my @exported_envvars = (
 	"VAMPIRE_DC_SERVER_IPV6",
 	"VAMPIRE_DC_NETBIOSNAME",
 	"VAMPIRE_DC_NETBIOSALIAS",
+
+	# domain controller stuff for RODC
+	"RODC_DC_SERVER",
+	"RODC_DC_SERVER_IP",
+	"RODC_DC_SERVER_IPV6",
+	"RODC_DC_NETBIOSNAME",
 
 	# domain controller stuff for FL 2000 Vampired DC
 	"VAMPIRE_2000_DC_SERVER",
@@ -1094,43 +1108,17 @@ $envvarstr
 		my $cmd = $$_[2];
 		my $name = $$_[0];
 		my $envname = $$_[1];
-		my ($env_basename, $env_localpart) = split(/:/, $envname);
-		my $envvars = "SKIP";
+		my $envvars = setup_env($envname, $prefix);
 
-		if (@opt_include_env) {
-		    foreach my $env (@opt_include_env) {
-			if ($env_basename eq $env) {
-			    $envvars = setup_env($envname, $prefix);
-			}
-		    }
-		} elsif (@opt_exclude_env) {
-		    my $excluded = 0;
-		    foreach my $env (@opt_exclude_env) {
-			if ($env_basename eq $env) {
-			    $excluded = 1;
-			}
-		    }
-		    if ($excluded == 0) {
-			$envvars = setup_env($envname, $prefix);
-		    }
-		} else {
-		    $envvars = setup_env($envname, $prefix);
-		}
-		
 		if (not defined($envvars)) {
 			Subunit::start_testsuite($name);
 			Subunit::end_testsuite($name, "error",
 				"unable to set up environment $envname - exiting");
 			next;
-		} elsif ($envvars eq "SKIP") {
-			Subunit::start_testsuite($name);
-			Subunit::end_testsuite($name, "skip",
-				"environment $envname is disabled (via --exclude-env / --include-env command line options) in this test run - skipping");
-			next;
 		} elsif ($envvars eq "UNKNOWN") {
 			Subunit::start_testsuite($name);
-			Subunit::end_testsuite($name, "skip",
-				"environment $envname is unknown in this test backend - skipping");
+			Subunit::end_testsuite($name, "error",
+				"environment $envname is unknown - exiting");
 			next;
 		}
 

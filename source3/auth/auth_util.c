@@ -798,8 +798,12 @@ static NTSTATUS get_guest_info3(TALLOC_CTX *mem_ctx,
  left as-is for now.
 ***************************************************************************/
 
-static NTSTATUS make_new_session_info_guest(struct auth_session_info **session_info, struct auth_serversupplied_info **server_info)
+static NTSTATUS make_new_session_info_guest(TALLOC_CTX *mem_ctx,
+		struct auth_session_info **_session_info,
+		struct auth_serversupplied_info **_server_info)
 {
+	struct auth_session_info *session_info = NULL;
+	struct auth_serversupplied_info *server_info = NULL;
 	const char *guest_account = lp_guest_account();
 	const char *domain = lp_netbios_name();
 	struct netr_SamInfo3 info3;
@@ -823,7 +827,7 @@ static NTSTATUS make_new_session_info_guest(struct auth_session_info **session_i
 	status = make_server_info_info3(tmp_ctx,
 					guest_account,
 					domain,
-					server_info,
+					&server_info,
 					&info3);
 	if (!NT_STATUS_IS_OK(status)) {
 		DEBUG(0, ("make_server_info_info3 failed with %s\n",
@@ -831,25 +835,26 @@ static NTSTATUS make_new_session_info_guest(struct auth_session_info **session_i
 		goto done;
 	}
 
-	(*server_info)->guest = true;
+	server_info->guest = true;
 
 	/* This should not be done here (we should produce a server
 	 * info, and later construct a session info from it), but for
 	 * now this does not change the previous behavior */
-	status = create_local_token(tmp_ctx, *server_info, NULL,
-				    (*server_info)->info3->base.account_name.string,
-				    session_info);
+	status = create_local_token(tmp_ctx, server_info, NULL,
+				    server_info->info3->base.account_name.string,
+				    &session_info);
 	if (!NT_STATUS_IS_OK(status)) {
 		DEBUG(0, ("create_local_token failed: %s\n",
 			  nt_errstr(status)));
 		goto done;
 	}
-	talloc_steal(NULL, *session_info);
-	talloc_steal(NULL, *server_info);
 
 	/* annoying, but the Guest really does have a session key, and it is
 	   all zeros! */
-	(*session_info)->session_key = data_blob_talloc_zero(NULL, 16);
+	session_info->session_key = data_blob_talloc_zero(session_info, 16);
+
+	*_session_info = talloc_move(mem_ctx, &session_info);
+	*_server_info = talloc_move(mem_ctx, &server_info);
 
 	status = NT_STATUS_OK;
 done:
@@ -1131,12 +1136,17 @@ static struct auth_session_info *guest_info = NULL;
 
 static struct auth_serversupplied_info *guest_server_info = NULL;
 
-bool init_guest_info(void)
+bool init_guest_session_info(TALLOC_CTX *mem_ctx)
 {
+	NTSTATUS status;
+
 	if (guest_info != NULL)
 		return true;
 
-	return NT_STATUS_IS_OK(make_new_session_info_guest(&guest_info, &guest_server_info));
+	status = make_new_session_info_guest(mem_ctx,
+					     &guest_info,
+					     &guest_server_info);
+	return NT_STATUS_IS_OK(status);
 }
 
 NTSTATUS make_server_info_guest(TALLOC_CTX *mem_ctx,
@@ -1159,12 +1169,12 @@ NTSTATUS make_session_info_guest(TALLOC_CTX *mem_ctx,
 
 static struct auth_session_info *system_info = NULL;
 
-NTSTATUS init_system_session_info(void)
+NTSTATUS init_system_session_info(TALLOC_CTX *mem_ctx)
 {
 	if (system_info != NULL)
 		return NT_STATUS_OK;
 
-	return make_new_session_info_system(NULL, &system_info);
+	return make_new_session_info_system(mem_ctx, &system_info);
 }
 
 NTSTATUS make_session_info_system(TALLOC_CTX *mem_ctx,

@@ -70,7 +70,7 @@ static NTSTATUS authsam_password_ok(struct auth4_context *auth_context,
 		}
 		user_info = user_info_temp;
 
-		/*fall through*/
+		FALL_THROUGH;
 	}
 	case AUTH_PASSWORD_HASH:
 		*lm_sess_key = data_blob(NULL, 0);
@@ -739,6 +739,10 @@ static NTSTATUS authsam_want_check(struct auth_method_context *ctx,
 		return NT_STATUS_NOT_IMPLEMENTED;
 	}
 
+	if (effective_domain == NULL) {
+		effective_domain = "";
+	}
+
 	is_local_name = lpcfg_is_myname(ctx->auth_ctx->lp_ctx,
 					effective_domain);
 
@@ -784,7 +788,7 @@ static NTSTATUS authsam_want_check(struct auth_method_context *ctx,
 		return NT_STATUS_NOT_IMPLEMENTED;
 	}
 
-	if (effective_domain != NULL && !strequal(effective_domain, "")) {
+	if (!strequal(effective_domain, "")) {
 		DBG_DEBUG("%s is not one domain name (DC)\n",
 			  effective_domain);
 		return NT_STATUS_NOT_IMPLEMENTED;
@@ -792,11 +796,11 @@ static NTSTATUS authsam_want_check(struct auth_method_context *ctx,
 
 	p = strchr_m(user_info->mapped.account_name, '@');
 	if (p == NULL) {
-		if (effective_domain == NULL) {
-			return NT_STATUS_OK;
-		}
-		DEBUG(6,("authsam_check_password: '' without upn not handled (DC)\n"));
-		return NT_STATUS_NOT_IMPLEMENTED;
+		/*
+		 * An empty to domain name should be handled
+		 * as the local domain name.
+		 */
+		return NT_STATUS_OK;
 	}
 
 	effective_domain = p + 1;

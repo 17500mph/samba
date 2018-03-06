@@ -64,7 +64,7 @@ def parse_results(msg_ops, statistics, fh):
             msg_ops.control_msg(l)
             try:
                 dt = iso8601.parse_date(arg.rstrip("\n"))
-            except TypeError, e:
+            except TypeError as e:
                 print "Unable to parse time line: %s" % arg.rstrip("\n")
             else:
                 msg_ops.time(dt)
@@ -82,7 +82,8 @@ def parse_results(msg_ops, statistics, fh):
                     if l == "":
                         break
                     msg_ops.control_msg(l)
-                    if l == "]\n":
+                    if l[-2:] == "]\n":
+                        reason += l[:-2]
                         terminated = True
                         break
                     else:

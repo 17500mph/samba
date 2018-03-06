@@ -64,7 +64,7 @@ class LATests(samba.tests.TestCase):
         if opts.delete_in_setup:
             try:
                 self.samdb.delete(self.ou, ['tree_delete:1'])
-            except ldb.LdbError, e:
+            except ldb.LdbError as e:
                 print "tried deleting %s, got error %s" % (self.ou, e)
         self.samdb.add({'objectclass': 'organizationalUnit',
                         'dn': self.ou})
@@ -169,7 +169,8 @@ class LATests(samba.tests.TestCase):
         """Assert a function raises a particular LdbError."""
         try:
             f(*args, **kwargs)
-        except ldb.LdbError as (num, msg):
+        except ldb.LdbError as e:
+            (num, msg) = e.args
             if num != errcode:
                 lut = {v: k for k, v in vars(ldb).iteritems()
                        if k.startswith('ERR_') and isinstance(v, int)}

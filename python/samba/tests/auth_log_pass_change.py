@@ -142,7 +142,7 @@ class AuthLogPassChangeTests(samba.tests.auth_log_base.AuthLogTestBase):
             net.change_password(newpassword=password.encode('utf-8'),
                                 oldpassword=USER_PASS,
                                 username=USER_NAME)
-        except Exception, msg:
+        except Exception as msg:
             exception_thrown = True
         self.assertEquals(True, exception_thrown,
                           "Expected exception not thrown")
@@ -173,7 +173,7 @@ class AuthLogPassChangeTests(samba.tests.auth_log_base.AuthLogTestBase):
             net.change_password(newpassword=password.encode('utf-8'),
                                 oldpassword=USER_PASS,
                                 username="badUser")
-        except Exception, msg:
+        except Exception as msg:
             exception_thrown = True
         self.assertEquals(True, exception_thrown,
                           "Expected exception not thrown")
@@ -204,7 +204,7 @@ class AuthLogPassChangeTests(samba.tests.auth_log_base.AuthLogTestBase):
             net.change_password(newpassword=password.encode('utf-8'),
                                 oldpassword="badPassword",
                                 username=USER_NAME)
-        except Exception, msg:
+        except Exception as msg:
             exception_thrown = True
         self.assertEquals(True, exception_thrown,
                           "Expected exception not thrown")
@@ -290,7 +290,8 @@ class AuthLogPassChangeTests(samba.tests.auth_log_base.AuthLogTestBase):
                 "userPassword: " + new_password + "\n"
             )
             self.fail()
-        except LdbError, (num, msg):
+        except LdbError as e:
+            (num, msg) = e.args
             pass
 
         messages = self.waitForMessages(isLastExpectedMessage)
@@ -320,7 +321,8 @@ class AuthLogPassChangeTests(samba.tests.auth_log_base.AuthLogTestBase):
                 "userPassword: " + new_password + "\n"
             )
             self.fail()
-        except LdbError, (num, msg):
+        except LdbError as e1:
+            (num, msg) = e1.args
             pass
 
         messages = self.waitForMessages(isLastExpectedMessage)

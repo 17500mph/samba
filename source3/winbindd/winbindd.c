@@ -1330,9 +1330,6 @@ static void winbindd_register_handlers(struct messaging_context *msg_ctx,
 			   MSG_WINBIND_DOMAIN_ONLINE, winbind_msg_domain_online);
 
 	messaging_register(msg_ctx, NULL,
-			   MSG_DUMP_EVENT_LIST, winbind_msg_dump_event_list);
-
-	messaging_register(msg_ctx, NULL,
 			   MSG_WINBIND_VALIDATE_CACHE,
 			   winbind_msg_validate_cache);
 
@@ -1768,7 +1765,7 @@ int main(int argc, const char **argv)
 		exit(1);
 	}
 
-	status = init_system_session_info();
+	status = init_system_session_info(NULL);
 	if (!NT_STATUS_IS_OK(status)) {
 		exit_daemon("Winbindd failed to setup system user info", map_errno_from_nt_status(status));
 	}

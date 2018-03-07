@@ -996,6 +996,31 @@ static NTSTATUS cm_prepare_connection(struct winbindd_domain *domain,
 
 	enum smb_signing_setting smb_sign_client_connections = lp_client_ipc_signing();
 
+	if (IS_AD_DC) {
+		if (domain->secure_channel_type == SEC_CHAN_NULL) {
+			/*
+			 * Make sure we don't even try to
+			 * connect to a foreign domain
+			 * without a direct outbound trust.
+			 */
+			return NT_STATUS_NO_TRUST_LSA_SECRET;
+		}
+
+		/*
+		 * As AD DC we only use netlogon and lsa
+		 * using schannel over an anonymous transport
+		 * (ncacn_ip_tcp or ncacn_np).
+		 *
+		 * Currently we always establish the SMB connection,
+		 * even if we don't use it, because we later use ncacn_ip_tcp.
+		 *
+		 * As we won't use the SMB connection there's no
+		 * need to try kerberos. And NT4 domains expect
+		 * an anonymous IPC$ connection anyway.
+		 */
+		smb_sign_client_connections = SMB_SIGNING_OFF;
+	}
+
 	if (smb_sign_client_connections == SMB_SIGNING_DEFAULT) {
 		/*
 		 * If we are connecting to our own AD domain, require
@@ -1008,8 +1033,7 @@ static NTSTATUS cm_prepare_connection(struct winbindd_domain *domain,
 		 * AD domain in our forest
 		 * then require smb signing to disrupt MITM attacks
 		 */
-		} else if ((lp_security() == SEC_ADS ||
-			    lp_server_role() == ROLE_ACTIVE_DIRECTORY_DC)
+		} else if ((lp_security() == SEC_ADS)
 			   && domain->active_directory
 			   && (domain->domain_trust_attribs
 			       & LSA_TRUST_ATTRIBUTE_WITHIN_FOREST)) {
@@ -1066,6 +1090,22 @@ static NTSTATUS cm_prepare_connection(struct winbindd_domain *domain,
 		 * trust, and we have no stored user/password
 		 */
 		try_ipc_auth = true;
+	}
+
+	if (IS_AD_DC) {
+		/*
+		 * As AD DC we only use netlogon and lsa
+		 * using schannel over an anonymous transport
+		 * (ncacn_ip_tcp or ncacn_np).
+		 *
+		 * Currently we always establish the SMB connection,
+		 * even if we don't use it, because we later use ncacn_ip_tcp.
+		 *
+		 * As we won't use the SMB connection there's no
+		 * need to try kerberos. And NT4 domains expect
+		 * an anonymous IPC$ connection anyway.
+		 */
+		try_ipc_auth = false;
 	}
 
 	if (try_ipc_auth) {
@@ -2187,6 +2227,15 @@ static bool set_dc_type_and_flags_trustinfo( struct winbindd_domain *domain )
 	TALLOC_CTX *mem_ctx = NULL;
 	struct dcerpc_binding_handle *b;
 
+	if (IS_DC) {
+		/*
+		 * On a DC we loaded all trusts
+		 * from configuration and never learn
+		 * new domains.
+		 */
+		return true;
+	}
+
 	DEBUG(5, ("set_dc_type_and_flags_trustinfo: domain %s\n", domain->name ));
 
 	/* Our primary domain doesn't need to worry about trust flags.
@@ -2581,6 +2630,15 @@ done:
 
 static void set_dc_type_and_flags( struct winbindd_domain *domain )
 {
+	if (IS_DC) {
+		/*
+		 * On a DC we loaded all trusts
+		 * from configuration and never learn
+		 * new domains.
+		 */
+		return;
+	}
+
 	/* we always have to contact our primary domain */
 
 	if ( domain->primary || domain->internal) {
@@ -2645,6 +2703,20 @@ NTSTATUS cm_connect_sam(struct winbindd_domain *domain, TALLOC_CTX *mem_ctx,
 		if (domain->rodc == false || need_rw_dc == false) {
 			return open_internal_samr_conn(mem_ctx, domain, cli, sam_handle);
 		}
+	}
+
+	if (IS_AD_DC) {
+		/*
+		 * In theory we should not use SAMR within
+		 * winbindd at all, but that's a larger task to
+		 * remove this and avoid breaking existing
+		 * setups.
+		 *
+		 * At least as AD DC we have the restriction
+		 * to avoid SAMR against trusted domains,
+		 * as there're no existing setups.
+		 */
+		return NT_STATUS_REQUEST_NOT_ACCEPTED;
 	}
 
 retry:
@@ -2967,6 +3039,13 @@ retry:
 
 	TALLOC_FREE(conn->lsa_pipe);
 
+	if (IS_AD_DC) {
+		/*
+		 * Make sure we only use schannel as AD DC.
+		 */
+		goto schannel;
+	}
+
 	result = get_trust_credentials(domain, talloc_tos(), false, &creds);
 	if (!NT_STATUS_IS_OK(result)) {
 		DEBUG(10, ("cm_connect_lsa: No user available for "
@@ -3080,12 +3159,26 @@ retry:
 		goto done;
 	}
 
+	if (IS_AD_DC) {
+		/*
+		 * Make sure we only use schannel as AD DC.
+		 */
+		goto done;
+	}
+
 	DEBUG(10,("cm_connect_lsa: rpccli_lsa_open_policy failed, trying "
 		  "anonymous\n"));
 
 	TALLOC_FREE(conn->lsa_pipe);
 
  anonymous:
+
+	if (IS_AD_DC) {
+		/*
+		 * Make sure we only use schannel as AD DC.
+		 */
+		goto done;
+	}
 
 	if (lp_winbind_sealed_pipes() || lp_require_strong_key()) {
 		result = NT_STATUS_DOWNGRADE_DETECTED;
@@ -3187,6 +3280,17 @@ static NTSTATUS cm_connect_netlogon_transport(struct winbindd_domain *domain,
 	struct cli_credentials *creds = NULL;
 
 	*cli = NULL;
+
+	if (IS_AD_DC) {
+		if (domain->secure_channel_type == SEC_CHAN_NULL) {
+			/*
+			 * Make sure we don't even try to
+			 * connect to a foreign domain
+			 * without a direct outbound trust.
+			 */
+			return NT_STATUS_NO_TRUST_LSA_SECRET;
+		}
+	}
 
 	result = init_dc_connection_rpc(domain, domain->rodc);
 	if (!NT_STATUS_IS_OK(result)) {

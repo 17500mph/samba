@@ -1,7 +1,7 @@
 Release Announcements
 =====================
 
-This is the third release candidate of Samba 4.8.  This is *not*
+This is the fourth release candidate of Samba 4.8.  This is *not*
 intended for production environments and is designed for testing
 purposes only.  Please report any defects via the Samba bug reporting
 system at https://bugzilla.samba.org/.
@@ -12,9 +12,41 @@ Samba 4.8 will be the next version of the Samba suite.
 UPGRADING
 =========
 
+New GUID Index mode in sam.ldb for the AD DC
+--------------------------------------------
+
+Users who upgrade a Samba AD DC in-place will experience a short delay
+in the first startup of Samba while the sam.ldb is re-indexed.
+
+Unlike in previous releases a transparent downgrade is not possible.
+If you wish to downgrade such a DB to a Samba 4.7 or earlier version,
+please run the source4/scripting/bin/sambaundoguididx script first.
+
+smbclient reparse point symlink parameters reversed
+---------------------------------------------------
+
+See the more detailed description below.
+
+Changed trusted domains listing with wbinfo -m --verbose
+--------------------------------------------------------
+
+See the more detailed description below.
 
 NEW FEATURES/CHANGES
 ====================
+
+New GUID Index mode in sam.ldb for the AD DC
+--------------------------------------------
+
+The new layout used for sam.ldb is GUID, rather than DN oriented.
+This provides Samba's Active Directory Domain Controller with a faster
+database, particularly at larger scale.
+
+The underlying DB is still TDB, simply the choice of key has changed.
+
+The new mode is not optional, so no configuration is required.  Older
+Samba versions cannot read the new database (see the upgrade
+note above).
 
 KDC GPO application
 -------------------
@@ -111,37 +143,6 @@ dot or xdot, this shows the network as a graph with DCs as vertices
 and connections edges. Certain types of degenerate edges are shown in
 different colours or line-styles.
 
-NT4-style replication based net commands removed
-------------------------------------------------
-
-The following commands and sub-commands have been removed from the
-"net" utility:
-
-net rpc samdump
-net rpc vampire ldif
-
-Also, replicating from a real NT4 domain with "net rpc vampire" and
-"net rpc vampire keytab" has been removed.
-
-The NT4-based commands were accidentially broken in 2013, and nobody
-noticed the breakage. So instead of fixing them including tests (which
-would have meant writing a server for the protocols, which we don't
-have) we decided to remove them.
-
-For the same reason, the "samsync", "samdeltas" and "database_redo"
-commands have been removed from rpcclient.
-
-"net rpc vampire keytab" from Active Directory domains continues to be
-supported.
-
-vfs_aio_linux module removed
-----------------------------
-
-The current Linux kernel aio does not match what Samba would
-do. Shipping code that uses it leads people to false
-assumptions. Samba implements async I/O based on threads by default,
-there is no special module required to see benefits of read and write
-request being sent do the disk in parallel.
 
 smbclient reparse point symlink parameters reversed
 ---------------------------------------------------
@@ -170,6 +171,74 @@ domains. Some pam_winbind setups may also require the global list.
 If you have a setup that doesn't require the global list, you should set
 "winbind scan trusted domains = no".
 
+Improved support for trusted domains (as AD DC)
+-----------------------------------------------
+
+The support for trusted domains/forests has improved a lot.
+
+External domain trusts, as well a transitive forest trusts,
+are supported in both directions (inbound and outbound)
+for Kerberos and NTLM authentication now.
+
+The LSA LookupNames and LookupSids implementations
+support resolving names and sids from trusts domains/forest
+now. This is important in order to allow Samba based
+domain members to make use of the trust.
+
+However there are currently still a few limitations:
+
+- It's not possible to add users/groups of a trusted domain
+  into domain groups. So group memberships are not expanded
+  on trust boundaries.
+  See https://bugzilla.samba.org/show_bug.cgi?id=13300
+- Both sides of the trust need to fully trust each other!
+- No SID filtering rules are applied at all!
+- This means DCs of domain A can grant domain admin rights
+  in domain B.
+- Selective (CROSS_ORIGANIZATION) authentication is
+  not supported. It's possible to create such a trust,
+  but the KDC and winbindd ignore them.
+
+Changed trusted domains listing with wbinfo -m --verbose
+--------------------------------------------------------
+
+The trust properties printed by wbinfo -m --verbose have been changed to
+correctly reflect the view of the system where wbinfo is executed.
+
+The trust type field in particular can show additional values that correctly
+reflect the type of the trust: "Local" for the local SAM and BUILTIN,
+"Workstation" for a workstation trust to the primary domain, "RWDC" for the SAM
+on a AD DC, "RODC" for the SAM on a read-only DC, "PDC" for the SAM on a
+NT4-style DC, "Forest" for a AD forest trust and "External" for quarantined,
+external or NT4-style trusts.
+
+Indirect trusts are shown as "Routed" including the routing domain.
+
+Example, on a AD DC (SDOM1):
+
+Domain Name DNS Domain          Trust Type  Transitive  In   Out
+BUILTIN                         Local
+SDOM1       sdom1.site          RWDC
+WDOM3       wdom3.site          Forest      Yes         No   Yes
+WDOM2       wdom2.site          Forest      Yes         Yes  Yes
+SUBDOM31    subdom31.wdom3.site Routed (via WDOM3)
+SUBDOM21    subdom21.wdom2.site Routed (via WDOM2)
+
+Same setup, on a member of WDOM2:
+
+Domain Name DNS Domain          Trust Type  Transitive  In   Out
+BUILTIN                         Local
+TITAN                           Local
+WDOM2       wdom2.site          Workstation Yes         No   Yes
+WDOM1       wdom1.site          Routed (via WDOM2)
+WDOM3       wdom3.site          Routed (via WDOM2)
+SUBDOM21    subdom21.wdom2.site Routed (via WDOM2)
+SDOM1       sdom1.site          Routed (via WDOM2)
+SUBDOM11    subdom11.wdom1.site Routed (via WDOM2)
+
+The list of trusts may be incomplete and additional domains may appear as
+"Routed" if a user of an unknown domain is successfully authenticated.
+
 VirusFilter VFS module
 ----------------------
 
@@ -179,6 +248,9 @@ software to provide scanning and filtering of files on a Samba share.
 
 REMOVED FEATURES
 ================
+
+'net serverid' commands removed
+-------------------------------
 
 The two commands 'net serverid list' and 'net serverid wipe' have been
 removed, because the file serverid.tdb is not used anymore.
@@ -193,6 +265,38 @@ for clustered environments, where the serverid.tdb file was not
 properly cleaned up after single node crashes. Nowadays smbd and
 winbind take care of cleaning up the msg.lock and msg.sock directories
 automatically.
+
+NT4-style replication based net commands removed
+------------------------------------------------
+
+The following commands and sub-commands have been removed from the
+"net" utility:
+
+net rpc samdump
+net rpc vampire ldif
+
+Also, replicating from a real NT4 domain with "net rpc vampire" and
+"net rpc vampire keytab" has been removed.
+
+The NT4-based commands were accidentally broken in 2013, and nobody
+noticed the breakage. So instead of fixing them including tests (which
+would have meant writing a server for the protocols, which we don't
+have) we decided to remove them.
+
+For the same reason, the "samsync", "samdeltas" and "database_redo"
+commands have been removed from rpcclient.
+
+"net rpc vampire keytab" from Active Directory domains continues to be
+supported.
+
+vfs_aio_linux module removed
+----------------------------
+
+The current Linux kernel aio does not match what Samba would
+do. Shipping code that uses it leads people to false
+assumptions. Samba implements async I/O based on threads by default,
+there is no special module required to see benefits of read and write
+request being sent do the disk in parallel.
 
 
 smb.conf changes
@@ -219,6 +323,55 @@ smb.conf changes
   unicode                            Deprecated
   winbind scan trusted domains       New                     yes
   winbind trusted domains only       Removed
+
+
+CHANGES SINCE 4.8.0rc3
+======================
+
+o  Ralph Boehme <slow@samba.org>
+   * BUG 13287: Fix numerous trust related bugs in winbindd and s4 LSA RPC
+     server.
+   * BUG 13296: vfs_fruit: Use off_t, not size_t for TM size calculations.
+
+o  Alexander Bokovoy <ab@samba.org>
+   * BUG 13304: mit-kdb: Support MIT Kerberos 1.16 KDB API changes.
+
+o  Günther Deschner <gd@samba.org>
+   * BUG 13277: build: Fix libceph-common detection.
+
+o  Poornima G <pgurusid@redhat.com>
+   * BUG 13297: vfs_glusterfs: Fix the wrong pointer being sent in
+     glfs_fsync_async.
+
+o  Volker Lendecke <vl@samba.org>
+   * BUG 13305: vfs_fileid: Fix the 32-bit build.
+
+o  Stefan Metzmacher <metze@samba.org>
+   * BUG 13206: Unable to authenticate with an empty string domain ''.
+   * BUG 13276: configure aborts without libnettle/gnutls.
+   * BUG 13278: winbindd (on an AD DC) should only use netlogon/lsa against
+     trusted domains.
+   * BUG 13287: Fix numerous trust related bugs in winbindd and s4 LSA RPC
+     server.
+   * BUG 13290: A disconnecting winbind client can cause a problem in 
+     the winbind parent child communication.
+   * BUG 13291: tevent: version 0.9.36.
+   * BUG 13292: winbind requests could get stuck in the queue of a busy child,
+     while later requests could get served fine by other children.
+   * BUG 13293: Minimize the lifetime of winbindd_cli_state->{pw,gr}ent_state.
+   * BUG 13294: Avoid using fstrcpy(domain->dcname,...) on a char *.
+   * BUG 13295: winbind parent should find the dc of a foreign domain via the
+     primary domain.
+   * BUG 13299: Disable support for CROSS_ORGANIZATION domains.
+   * BUG 13306: ldb: version 1.3.2.
+
+o  Sachin Prabhu <sprabhu@redhat.com>
+   * BUG 13303: vfs_glusterfs: Add fallocate support for vfs_glusterfs.
+
+o  Garming Sam <garming@catalyst.net.nz>
+   * BUG 13031: subnet: Avoid a segfault when renaming subnet objects.
+   * BUG 13269: RODC may skip objects during replication due to naming
+     conflicts.
 
 
 CHANGES SINCE 4.8.0rc2
